@@ -6,8 +6,8 @@ class Node:
         self.type = ntype
         self.status = "REC"
         self.neighbors = []
-        self.readbuffer = []
-        self.sendbuffer = []
+        self.readbuffer = [None] * 16
+        self.sendbuffer = [None] * 16
         self.nextStatus = "REC"
         self.team = 0
 
@@ -42,8 +42,8 @@ class SourceNode(Node):
         num = len(self.neighbors)
         for neighbor in self.neighbors:
             if (neighbor.status == "REC"):
-                neighbor.readbuffer.append( (self.token, self) )
-                print "Sending {} to {} at {}".format(self.token, neighbor.type, neighbor.pos)
+                neighbor.readbuffer[self.channel] = (self.token, self)
+                print "Sending {} to {} at {} on channel {}".format(self.token, neighbor.type, neighbor.pos, self.channel)
                 break
 
 class SinkNode(Node):
@@ -54,11 +54,12 @@ class SinkNode(Node):
         self.score = 0
 
     def recieve(self):
-        for item in self.readbuffer:
-            if item[0] == self.token:
-                item[1].readbuffer.append(("ACK", self.token))
+        for i, item in enumerate(self.readbuffer):
+            if item != None and item[0] == self.token:
+                item[1].readbuffer[i] = ("ACK", self.token, i)
                 self.score += 1
-        self.readbuffer = []
+                print "Delivered {} to sink, score = {}".format(self.token, self.score)
+            self.readbuffer[i] = None
 
 class HotPotatoNode(Node):
     def __init__(self, pos):
@@ -67,23 +68,27 @@ class HotPotatoNode(Node):
     def send(self, msg):
         num = len(self.neighbors)
         for smsg in self.sendbuffer:
+            if smsg == None:
+                continue
             for neighbor in self.neighbors:
                 randNeighbor = self.neighbors[random.randint(0, num-1)]
                 if randNeighbor.status == "REC":
-                    randNeighbor.readbuffer.append((smsg, self))
+                    randNeighbor.readbuffer[0] = (smsg, self)
                     print "{} at {} sending {} to {} at {}".format(self.type, self.pos, smsg, randNeighbor.type, randNeighbor.pos)
                     break
         self.nextStatus = "REC"
 
     def recieve(self):
-        for item in self.readbuffer:
+        for i, item in enumerate(self.readbuffer):
+            if item == None:
+                continue
             if item[0] == "ACK":
-                self.sendbuffer.remove(item[1])
-                print "{} at {} recieved ack for {}".format(self.type, self.pos, item[1])
+                self.sendbuffer[item[2]] = None
+                print "{} at {} recieved ack for {} on channel".format(self.type, self.pos, item[1], item[2])
             else:
-                item[1].readbuffer.append(("ACK", item[0]))
-                self.sendbuffer.append(item[0])
-                print "{} at {} recieved {} from {} at {}".format(self.type, self.pos, item[0], item[1].type, item[1].pos)
-        self.readbuffer = []
-        if len(self.sendbuffer) > 0:
+                item[1].readbuffer[i] = ("ACK", item[0], i)
+                self.sendbuffer[i] = (item[0])
+                print "{} at {} recieved {} from {} at {} on channel {}".format(self.type, self.pos, item[0], item[1].type, item[1].pos, i)
+            self.readbuffer[i] = None
+        if not all(x is None for x in self.sendbuffer):
             self.nextStatus = "SEND"
