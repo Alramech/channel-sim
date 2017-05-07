@@ -10,22 +10,22 @@ class Field:
         self.nodes = []
         self.sinks = []
 
-    def addSource(self, pos, token):
-        node = SourceNode(pos, token)
+    def addSource(self, pos, token, team = 0):
+        node = SourceNode(pos, token, team=team)
         self.field[pos[0]][pos[1]] = node
         self.nodes.append(node)
         gui.add_node(pos, "red")
 
-    def addSink(self, pos, token):
-        node = SinkNode(pos, token)
+    def addSink(self, pos, token, team = 0):
+        node = SinkNode(pos, token, team=team)
         self.field[pos[0]][pos[1]] = node
         self.nodes.append(node)
         self.sinks.append(node)
         gui.add_node(pos)
         gui.add_score()
 
-    def addHPNode(self, pos):
-        node = HotPotatoNode(pos)
+    def addHPNode(self, pos, team = 1):
+        node = HotPotatoNode(pos, team)
         self.field[pos[0]][pos[1]] = node
         self.nodes.append(node)
         gui.add_node(pos, "orange")
@@ -36,15 +36,17 @@ class Field:
         self.nodes.append(node)
         gui.add_node(pos)
 
-    def addSmartNode(self, pos):
-        node = SmartNode(pos)
+    def addSmartNode(self, pos, team = 1):
+        node = SmartNode(pos, team)
         self.field[pos[0]][pos[1]] = node
         self.nodes.append(node)
+        gui.add_node(pos, "cyan")
 
     def addNoiseNode(self, pos):
         node = NoiseNode(pos)
         self.field[pos[0]][pos[1]] = node
         self.nodes.append(node)
+        gui.add_node(pos, "grey")
 
     def checkNeighbors(self):
         for node in self.nodes:
@@ -54,8 +56,12 @@ class Field:
                     gui.add_line(node.pos, node2.pos)
 
     def isConnected(self, n1, n2):
+        if n1.team != n2.team:
+            return False
         dis = max(math.sqrt(math.pow(n1.pos[0] - n2.pos[0], 2) + math.pow(n1.pos[1] - n2.pos[1], 2)), 1)
         probability = min(2/math.sqrt(dis), 1)
+
+        return dis < 2
         if probability > random.random():
             return True
         else:
@@ -65,7 +71,7 @@ class Field:
         self.checkNeighbors()
         for node in self.nodes:
             if node.status == "SEND":
-                node.send("Hi")
+                node.send(None)
         for node in self.nodes:
             msg = node.getMessages()
             gui.update_packets(node.pos, node.readbuffer)
@@ -104,7 +110,7 @@ test = Field(10)
 def loop():
     while True:
         test.step()
-        time.sleep(1)
+        time.sleep(.1)
         print"--------------"
         root.update()
 
@@ -123,6 +129,32 @@ def defaultTest():
     print test
     loop()
 
+
+def teamTest():
+    #test.addSource((0,0), "test", 1)
+    #test.addHPNode((0,1), 1)
+    #test.addHPNode((0,2), 1)
+    #test.addHPNode((0,3), 1)
+    #test.addHPNode((0,4), 1)
+    #test.addSink((0,5), "test", 1)
+    test.addSource((5,5), "test", 2)
+    test.addNoiseNode((3, 3))
+    test.addSmartNode((1, 1), 2)
+    test.addSmartNode((4, 4), 2)
+    test.addSmartNode((4, 3), 2)
+    test.addSmartNode((3, 4), 2)
+    test.addSmartNode((2, 4), 2)
+    test.addSmartNode((4, 2), 2)
+    test.addSmartNode((2, 2), 2)
+    test.addSmartNode((3, 2), 2)
+    test.addSmartNode((2, 3), 2)
+    test.addSink((3,1), "test", 2)
+    print test
+    loop()
+
+
+
 #test.loadConfig("simpleTest.fld")
 root.update()
-defaultTest()
+#defaultTest()
+teamTest()

@@ -41,13 +41,14 @@ class Node:
 
 class SourceNode(Node):
 
-    def __init__(self, pos, token, channel = 0):
+    def __init__(self, pos, token, channel = 0, team = 0):
         Node.__init__(self, pos, "SOURCE")
         self.token = token
         self.status = "SEND"
         self.nextStatus = "SEND"
         self.cooldown = 0
         self.channel = channel
+        self.team = team
 
     def send(self, msg):
         if (self.cooldown > 0):
@@ -63,11 +64,12 @@ class SourceNode(Node):
                 break
 
 class SinkNode(Node):
-    def __init__(self, pos, token):
+    def __init__(self, pos, token, team = 0):
         Node.__init__(self, pos, "SINK")
         self.token = token
         self.status = "REC"
         self.score = 0
+        self.team = team
 
     def recieve(self):
         for i, item in enumerate(self.readbuffer):
@@ -78,9 +80,10 @@ class SinkNode(Node):
             self.readbuffer[i] = None
 
 class SmartNode(Node):
-    def __init__(self, pos):
+    def __init__(self, pos, team = 1):
         Node.__init__(self, pos, "Smart")
         num = random.random()
+        self.team = team
         if num < 0.4:
             self.status = "SEND"
 
@@ -125,9 +128,18 @@ class SmartNode(Node):
         return smallest_num_index
 
 
-    def send(self, msg):
+    def send(self, msg = None):
         # first determine which channel is least traffic congested
         channel = self.channel_to_send()
+
+        for i, v in enumerate(self.sendbuffer):
+            if v != None:
+                self.sendbuffer[i] = None
+                msg = v
+                break
+        if msg == None:
+            return
+            msg = sendbuffer[0]
 
         # now set send buffer to the desired msg
         self.sendbuffer[channel] = msg
@@ -136,7 +148,7 @@ class SmartNode(Node):
                 if neighbor.readbuffer[channel] != None:
                     # TODO: what do we do here? just give up or try to send on another channel
                     # for this specific neighbor?
-                    channel = channel_to_send_neighbor(neighbor)
+                    channel = self.channel_to_send_neighbor(neighbor)
                 buffer_contents = neighbor.readbuffer[channel]
                 if buffer_contents != None and buffer_contents[1] == None:
                     # There's noise, so we still add it, but its jumbled
@@ -148,7 +160,6 @@ class SmartNode(Node):
                     # no noise or other nodes trying to communicate
                     neighbor.readbuffer[channel] = (msg, self)
                     print "{} at {} sending {} to {} at {} on channel {}".format(self.type, self.pos, msg, neighbor.type, neighbor.pos, channel)
-        
         # Not sure about this?
         self.nextStatus = "REC"
 
@@ -176,13 +187,18 @@ class SmartNode(Node):
             if item == None:
                 continue
 
+            if item == "INTERFERENCE":
+                continue
+            print item
+            if item[0] == "ACK" or item[0] == "Hi":
+                continue
             if item[1]:
                 print "{} at {} recieved {} from {} at {} on channel {}".format(self.type, self.pos, item[0], item[1].type, item[1].pos, i)
-                item[1].sendbuffer[i] = None
+                item[1].sendbuffer[i] = item[0]
             else:
                 print "{} at {} recieved {} on channel {}".format(self.type, self.pos, item[0], i)
 
-            self.readbuffer[i] = None            
+            self.readbuffer[i] = None
 
         # Not sure about this?
         if not all(x is None for x in self.sendbuffer):
@@ -192,6 +208,7 @@ class NoiseNode(Node):
     def __init__(self, pos):
         Node.__init__(self, pos, "Noise")
         self.status = "SEND"
+        self.team = -1
 
     def send(self, msg):
         # generate gaussian noise (alphanumeric string) and add at end
@@ -215,8 +232,9 @@ class NoiseNode(Node):
         pass
 
 class HotPotatoNode(Node):
-    def __init__(self, pos):
+    def __init__(self, pos, team = 1):
         Node.__init__(self, pos, "HP")
+        self.team = team
 
     def send(self, msg):
         num = len(self.neighbors)
@@ -240,8 +258,9 @@ class HotPotatoNode(Node):
             if item[0] == "ACK":
                 self.sendbuffer[item[2]] = None
                 print "{} at {} recieved ack for {} on channel".format(self.type, self.pos, item[1], item[2])
+            elif item[1] == None:
+                pass
             else:
-                print item[1]
                 item[1].readbuffer[i] = ("ACK", item[0], i)
                 self.sendbuffer[i] = (item[0])
                 print "{} at {} recieved {} from {} at {} on channel {}".format(self.type, self.pos, item[0], item[1].type, item[1].pos, i)
