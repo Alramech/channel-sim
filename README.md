@@ -1,6 +1,5 @@
 # channel-sim
 
-
 #Architecture
 The basic unit of this project is a node. Nodes are owned by 
 either an agent or a bot. Agents will run a given program in response
@@ -28,4 +27,9 @@ The second level is where each the program calculates a Signal-to-Interference-P
 
 The third level will calculate SINR from only 1 blob, and return a data token as above. 
 
+## No-MIMO level of simulation
 
+Decoding function
+  * When agent listens, it receives 32 blobs (one per antenna, per channel).
+  * Decoding function takes in each blob, and checks SINR from MIMI-unlock level of simulation. 
+      * If SINR is greater than threshold specified, then return token that was received. Otherwise we return an error token.
