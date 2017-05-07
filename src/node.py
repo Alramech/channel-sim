@@ -109,11 +109,7 @@ class SmartNode(Node):
                 if neighbor.status == "REC":
                     buffer_cont = neighbor.readbuffer[ind]
                     if buffer_cont != None:
-                        if buffer_cont[1] != None:
-                            channel_traffic += 1
-                        else:
-                            # if there's noise only, just increment by 0.5
-                            channel_traffic += 0.5
+                        channel_traffic += 1
                 else:
                     buffer_cont = neighbor.sendbuffer[ind]
                     if buffer_cont != None:
@@ -133,13 +129,9 @@ class SmartNode(Node):
         self.sendbuffer[channel] = msg
         for neighbor in self.neighbors:
             if neighbor.status == "REC":
-                if neighbor.readbuffer[channel] != None:
-                    # TODO: what do we do here? just give up or try to send on another channel
-                    # for this specific neighbor?
-                    channel = channel_to_send_neighbor(neighbor)
                 buffer_contents = neighbor.readbuffer[channel]
-                if buffer_contents != None and buffer_contents[1] == None:
-                    # There's noise, so we still add it, but its jumbled
+                if buffer_contents != None:
+                    # There's noise or other content, so we still add it, but its jumbled
                     possibilities = jumble(buffer_contents[0], msg)
                     jumble_choice = possibilities[random.randint(0, possibilities.length)]
                     neighbor.readbuffer[channel] = (jumble_choice, self)
@@ -158,7 +150,7 @@ class SmartNode(Node):
             return
         channel = channel_to_send_neighbor(dst)
         buffer_contents = dst.readbuffer[channel]
-        if buffer_contents != None and buffer_contents[1] == None:
+        if buffer_contents != None:
             # There's noise, so we still add it, but its jumbled
             possibilities = jumble(buffer_contents[0], msg)
             jumble_choice = possibilities[random.randint(0, possibilities.length)]
