@@ -23,6 +23,16 @@ class Field:
         self.field[pos[0]][pos[1]] = node
         self.nodes.append(node)
 
+    def addSmartNode(self, pos):
+        node = SmartNode(pos)
+        self.field[pos[0]][pos[1]] = node
+        self.nodes.append(node)
+
+    def addNoiseNode(self, pos):
+        node = NoiseNode(pos)
+        self.field[pos[0]][pos[1]] = node
+        self.nodes.append(node)
+
     def checkNeighbors(self):
         for node in self.nodes:
             for node2 in self.nodes:
@@ -41,7 +51,7 @@ class Field:
         self.checkNeighbors()
         for node in self.nodes:
             if node.status == "SEND":
-                node.send(None)
+                node.send("Hi")
         for node in self.nodes:
             if node.status == "REC":
                 node.recieve()
@@ -57,10 +67,15 @@ class Field:
         return out
 test = Field(10)
 test.addSource((0,0), "test")
-test.addHPNode((1,1))
-test.addHPNode((2,2))
-test.addHPNode((3,4))
-test.addHPNode((7,1))
+#test.addHPNode((1,1))
+#test.addHPNode((2,2))
+#test.addHPNode((3,4))
+#test.addHPNode((7,1))
+test.addNoiseNode((3, 3))
+test.addSmartNode((1, 1))
+test.addSmartNode((2, 2))
+test.addSmartNode((3, 4))
+test.addSmartNode((7, 1))
 test.addSink((0,1), "test")
 print test
 while True:

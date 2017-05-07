@@ -1,4 +1,7 @@
 import random
+import string
+
+jumble=lambda*p:[x[0]+t for x,y in p,p[::-1]for t in x and jumble(x[1:],y)]or['']
 
 class Node:
     def __init__(self, pos, ntype):
@@ -64,15 +67,20 @@ class SinkNode(Node):
 class SmartNode(Node):
     def __init__(self, pos):
         Node.__init__(self, pos, "Smart")
+        num = random.random()
+        if num < 0.4:
+            self.status = "SEND"
 
     # method to determine which channel to send for a particular neighbor
+    # in this particular case, we won't care about noise, but this may
+    # be problematic
     def channel_to_send_neighbor(self, neighbor):
         ind = None
         if neighbor.status == "REC":
             ind = 0
-            while ind < neighbor.readbuffer.length and neighbor.readbuffer[ind] == None:
+            while ind < 16 and (neighbor.readbuffer[ind] == None or neighbor.readbuffer[ind][1] == None):
                 ind += 1
-            if ind == neighbor.readbuffer.length:
+            if neighbor.readbuffer[ind] == None or neighbor.readbuffer[ind][1] == None:
                 ind = None
 
         return ind
@@ -86,10 +94,16 @@ class SmartNode(Node):
             channel_traffic = 0
             for neighbor in self.neighbors:
                 if neighbor.status == "REC":
-                    if neighbor.readbuffer[ind] != None:
-                        channel_traffic += 1
+                    buffer_cont = neighbor.readbuffer[ind]
+                    if buffer_cont != None:
+                        if buffer_cont[1] != None:
+                            channel_traffic += 1
+                        else:
+                            # if there's noise only, just increment by 0.5
+                            channel_traffic += 0.5
                 else:
-                    if neighbor.sendbuffer[ind] != None:
+                    buffer_cont = neighbor.sendbuffer[ind]
+                    if buffer_cont != None:
                         channel_traffic += 1
             if channel_traffic < smallest_num:
                 smallest_num = channel_traffic
@@ -110,17 +124,37 @@ class SmartNode(Node):
                     # TODO: what do we do here? just give up or try to send on another channel
                     # for this specific neighbor?
                     channel = channel_to_send_neighbor(neighbor)
-                neighbor.readbuffer[channel] = (msg, self)
-                print "{} at {} sending {} to {} at {} on channel {}".format(self.type, self.pos, msg, neighbor.type, neighbor.pos, channel)
+                buffer_contents = neighbor.readbuffer[channel]
+                if buffer_contents != None and buffer_contents[1] == None:
+                    # There's noise, so we still add it, but its jumbled
+                    possibilities = jumble(buffer_contents[0], msg)
+                    jumble_choice = possibilities[random.randint(0, possibilities.length)]
+                    neighbor.readbuffer[channel] = (jumble_choice, self)
+                    print "{} at {} sending {} to {} at {} on channel {}".format(self.type, self.pos, jumble_choice, neighbor.type, neighbor.pos, channel)
+                elif buffer_contents == None:
+                    # no noise or other nodes trying to communicate
+                    neighbor.readbuffer[channel] = (msg, self)
+                    print "{} at {} sending {} to {} at {} on channel {}".format(self.type, self.pos, msg, neighbor.type, neighbor.pos, channel)
         
         # Not sure about this?
         self.nextStatus = "REC"
 
     # in this case, dst is neighbor
-    def send(self, msg, dst):
+    def send_neighbor(self, msg, dst):
+        if dst.status == "SEND":
+            return
         channel = channel_to_send_neighbor(dst)
-        neighbor.readbuffer[channel] = (msg, self)
-        print "{} at {} sending {} to {} at {} on channel {}".format(self.type, self.pos, msg, neighbor.type, neighbor.pos, channel)
+        buffer_contents = dst.readbuffer[channel]
+        if buffer_contents != None and buffer_contents[1] == None:
+            # There's noise, so we still add it, but its jumbled
+            possibilities = jumble(buffer_contents[0], msg)
+            jumble_choice = possibilities[random.randint(0, possibilities.length)]
+            neighbor.readbuffer[channel] = (jumble_choice, self)
+            print "{} at {} sending {} to {} at {} on channel {}".format(self.type, self.pos, jumble_choice, neighbor.type, neighbor.pos, channel)
+        elif buffer_contents == None:
+            # no noise or other nodes trying to communicate
+            neighbor.readbuffer[channel] = (msg, self)
+            print "{} at {} sending {} to {} at {} on channel {}".format(self.type, self.pos, msg, neighbor.type, neighbor.pos, channel)
         self.nextStatus = "REC"
 
     def recieve(self):
@@ -128,14 +162,44 @@ class SmartNode(Node):
         for i, item in enumerate(self.readbuffer):
             if item == None:
                 continue
-            print "{} at {} recieved {} from {} at {} on channel {}".format(self.type, self.pos, item[0], item[1].type, item[1].pos, i)
-            self.readbuffer[i] = None
-            item[1].sendbuffer[i] = None
+
+            if item[1]:
+                print "{} at {} recieved {} from {} at {} on channel {}".format(self.type, self.pos, item[0], item[1].type, item[1].pos, i)
+                item[1].sendbuffer[i] = None
+            else:
+                print "{} at {} recieved {} on channel {}".format(self.type, self.pos, item[0], i)
+
+            self.readbuffer[i] = None            
 
         # Not sure about this?
         if not all(x is None for x in self.sendbuffer):
             self.nextStatus = "SEND"
 
+class NoiseNode(Node):
+    def __init__(self, pos):
+        Node.__init__(self, pos, "Noise")
+        self.status = "SEND"
+
+    def send(self, msg):
+        # generate gaussian noise (alphanumeric string) and add at end
+        chars = string.ascii_uppercase + string.ascii_lowercase + string.digits
+        noise = ''.join(random.choice(chars) for i in range(32))
+
+        # choose a random channel to send on
+        rand_channel = random.randint(0, 16)
+        for neighbor in self.neighbors:
+            if neighbor.status == "REC":
+                # currently nothing there
+                if neighbor.readbuffer[rand_channel] == None:
+                    neighbor.readbuffer[rand_channel] = (noise, None)
+                else:
+                    curr_msg, curr_sender = neighbor.readbuffer[rand_channel]
+                    neighbor.readbuffer[rand_channel] = (curr_msg + noise, curr_sender)
+        print "Added noise {} at {} on channel {}".format(noise, self.pos, rand_channel)
+
+    # Noise nodes don't need to receive anything, only generate noise
+    def recieve(self):
+        pass
 
 class HotPotatoNode(Node):
     def __init__(self, pos):
