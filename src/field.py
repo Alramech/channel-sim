@@ -1,6 +1,6 @@
 from node import *
 import numpy as np
-import time
+import time, math, random
 
 class Field:
 
@@ -30,7 +30,12 @@ class Field:
                     node.neighbors.append(node2)
 
     def isConnected(self, n1, n2):
-        return True
+        dis = max(math.sqrt(math.pow(n1.pos[0] - n2.pos[0], 2) + math.pow(n1.pos[1] - n2.pos[1], 2)), 1)
+        probability = min(2/math.sqrt(dis), 1)
+        if probability > random.random():
+            return True
+        else:
+            return False
 
     def step(self):
         self.checkNeighbors()
