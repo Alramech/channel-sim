@@ -20,6 +20,18 @@ class Node:
     def update(self):
         self.status = self.nextStatus
 
+    def addToReadBuffer(self, token, channel):
+        if self.readbuffer[channel] == None:
+            self.readbuffer[channel] = token
+        else:
+            self.readbuffer[channel] = "INTERFERENCE"
+
+    def getMessages(self):
+        msgs = []
+        for msg in self.readbuffer:
+            if msg != None:
+                msgs.append(msg)
+        return msgs
     def __repr__(self):
         return "{} at {} in state {} \n read {}\n send {}\n".format(
             self.type, self.pos, self.status, self.readbuffer, self.sendbuffer)
@@ -42,7 +54,8 @@ class SourceNode(Node):
         num = len(self.neighbors)
         for neighbor in self.neighbors:
             if (neighbor.status == "REC"):
-                neighbor.readbuffer[self.channel] = (self.token, self)
+                token =  (self.token, self)
+                neighbor.addToReadBuffer(token, self.channel)
                 print "Sending {} to {} at {} on channel {}".format(self.token, neighbor.type, neighbor.pos, self.channel)
                 break
 
@@ -73,19 +86,22 @@ class HotPotatoNode(Node):
             for neighbor in self.neighbors:
                 randNeighbor = self.neighbors[random.randint(0, num-1)]
                 if randNeighbor.status == "REC":
-                    randNeighbor.readbuffer[0] = (smsg, self)
+                    token = (smsg, self)
+                    randNeighbor.addToReadBuffer(token, 0)
                     print "{} at {} sending {} to {} at {}".format(self.type, self.pos, smsg, randNeighbor.type, randNeighbor.pos)
                     break
         self.nextStatus = "REC"
 
     def recieve(self):
         for i, item in enumerate(self.readbuffer):
-            if item == None:
+            if item == None or item == "INTERFERENCE":
+                self.readbuffer[i] = None
                 continue
             if item[0] == "ACK":
                 self.sendbuffer[item[2]] = None
                 print "{} at {} recieved ack for {} on channel".format(self.type, self.pos, item[1], item[2])
             else:
+                print item[1]
                 item[1].readbuffer[i] = ("ACK", item[0], i)
                 self.sendbuffer[i] = (item[0])
                 print "{} at {} recieved {} from {} at {} on channel {}".format(self.type, self.pos, item[0], item[1].type, item[1].pos, i)
