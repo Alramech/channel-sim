@@ -28,6 +28,7 @@ class Node:
             self.readbuffer[channel] = token
         else:
             self.readbuffer[channel] = "INTERFERENCE"
+        return self.readbuffer[channel]
 
     def getMessages(self):
         msgs = []
@@ -141,17 +142,9 @@ class SmartNode(Node):
         self.sendbuffer[channel] = msg
         for neighbor in self.neighbors:
             if neighbor.status == "REC":
-                buffer_contents = neighbor.readbuffer[channel]
-                if buffer_contents != None:
-                    # There's noise or other content, so we still add it, but its jumbled
-                    possibilities = jumble(buffer_contents[0], msg)
-                    jumble_choice = possibilities[random.randint(0, possibilities.length)]
-                    neighbor.readbuffer[channel] = (jumble_choice, self)
-                    print "{} at {} sending {} to {} at {} on channel {}".format(self.type, self.pos, jumble_choice, neighbor.type, neighbor.pos, channel)
-                elif buffer_contents == None:
-                    # no noise or other nodes trying to communicate
-                    neighbor.readbuffer[channel] = (msg, self)
-                    print "{} at {} sending {} to {} at {} on channel {}".format(self.type, self.pos, msg, neighbor.type, neighbor.pos, channel)
+                token = (msg, self)
+                final_msg = neighbor.addToReadBuffer(token, channel)
+                print "{} at {} sending {} to {} at {} on channel {}".format(self.type, self.pos, final_msg, neighbor.type, neighbor.pos, channel)
         # Not sure about this?
         self.nextStatus = "REC"
 
@@ -161,16 +154,9 @@ class SmartNode(Node):
             return
         channel = channel_to_send_neighbor(dst)
         buffer_contents = dst.readbuffer[channel]
-        if buffer_contents != None:
-            # There's noise, so we still add it, but its jumbled
-            possibilities = jumble(buffer_contents[0], msg)
-            jumble_choice = possibilities[random.randint(0, possibilities.length)]
-            neighbor.readbuffer[channel] = (jumble_choice, self)
-            print "{} at {} sending {} to {} at {} on channel {}".format(self.type, self.pos, jumble_choice, neighbor.type, neighbor.pos, channel)
-        elif buffer_contents == None:
-            # no noise or other nodes trying to communicate
-            neighbor.readbuffer[channel] = (msg, self)
-            print "{} at {} sending {} to {} at {} on channel {}".format(self.type, self.pos, msg, neighbor.type, neighbor.pos, channel)
+        token = (msg, self)
+        final_msg = neighbor.addToReadBuffer(token, channel)
+        print "{} at {} sending {} to {} at {} on channel {}".format(self.type, self.pos, final_msg, dst.type, dst.pos, channel)
         self.nextStatus = "REC"
 
     def recieve(self):
@@ -213,10 +199,10 @@ class NoiseNode(Node):
             if neighbor.status == "REC":
                 # currently nothing there
                 if neighbor.readbuffer[rand_channel] == None:
-                    neighbor.readbuffer[rand_channel] = (noise, None)
+                    neighbor.readbuffer[rand_channel] = (noise, self)
                 else:
                     curr_msg, curr_sender = neighbor.readbuffer[rand_channel]
-                    neighbor.readbuffer[rand_channel] = (curr_msg + noise, curr_sender)
+                    neighbor.readbuffer[rand_channel] = "INTERFERENCE"
         print "Added noise {} at {} on channel {}".format(noise, self.pos, rand_channel)
 
     # Noise nodes don't need to receive anything, only generate noise
