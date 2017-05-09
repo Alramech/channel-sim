@@ -1,8 +1,23 @@
 import random
 import string
-
+from collections import defaultdict
 jumble=lambda*p:[x[0]+t for x,y in p,p[::-1]for t in x and jumble(x[1:],y)]or['']
+interference = defaultdict(int)
 
+class Packet:
+    def __init__(self, token, origin, channel = 0, numhops = 0, team = 0, type = "MSG"):
+        self.token = token
+        self.origin = origin
+        self.channel = channel
+        self.numhops = numhops
+        self.team = team
+        self.type = type
+
+    def copy(self):
+        return Packet(self.token, self.origin, self.channel, self.numhops, self.team, self.type)
+
+    def __repr__(self):
+        return "{}: {}, hops {}".format(self.type, self.token, self.numhops)
 class Node:
     def __init__(self, pos, ntype):
         self.pos = pos
@@ -11,6 +26,7 @@ class Node:
         self.neighbors = []
         self.readbuffer = [None] * 16
         self.sendbuffer = [None] * 16
+        self.ackbufffer = [None] * 16
         self.nextStatus = "REC"
         self.team = 0
 
@@ -27,7 +43,10 @@ class Node:
         if self.readbuffer[channel] == None:
             self.readbuffer[channel] = token
         else:
-            self.readbuffer[channel] = "INTERFERENCE"
+            token.type = "INTERFERENCE"
+            print "Receiving {} from {} at {} caused interference to {} at {}".format(
+                token.token, token.origin.type, token.origin.pos, self.type, self.pos)
+            self.readbuffer[channel] = token
 
     def getMessages(self):
         msgs = []
@@ -49,6 +68,7 @@ class SourceNode(Node):
         self.cooldown = 0
         self.channel = channel
         self.team = team
+        self.sent = 0
 
     def send(self, msg):
         if (self.cooldown > 0):
@@ -58,10 +78,11 @@ class SourceNode(Node):
         num = len(self.neighbors)
         for neighbor in self.neighbors:
             if (neighbor.status == "REC"):
-                token =  (self.token, self)
+                token =  Packet(self.token, self, self.channel, team = self.team)
                 neighbor.addToReadBuffer(token, self.channel)
                 print "Sending {} to {} at {} on channel {}".format(self.token, neighbor.type, neighbor.pos, self.channel)
                 break
+        self.sent += 1
 
 class SinkNode(Node):
     def __init__(self, pos, token, team = 0):
@@ -73,12 +94,13 @@ class SinkNode(Node):
 
     def recieve(self):
         for i, item in enumerate(self.readbuffer):
-            if item != None and item[0] == self.token:
-                item[1].readbuffer[i] = ("ACK", self.token, i)
+            if item != None and item.token == self.token and item.team == self.team:
+                item.numhops += 1
+                item.origin.readbuffer[(i+1)%16] = Packet(self.token, self, i, type = "ACK")
                 self.score += 1
                 print "Delivered {} to sink, score = {}".format(self.token, self.score)
             self.readbuffer[i] = None
-
+"""
 class SmartNode(Node):
     def __init__(self, pos, team = 1):
         Node.__init__(self, pos, "Smart")
@@ -94,9 +116,9 @@ class SmartNode(Node):
         ind = None
         if neighbor.status == "REC":
             ind = 0
-            while ind < 16 and (neighbor.readbuffer[ind] == None or neighbor.readbuffer[ind][1] == None):
+            while ind < 16 and (neighbor.readbuffer[ind] == None or neighbor.readbuffer[ind].origin == None):
                 ind += 1
-            if neighbor.readbuffer[ind] == None or neighbor.readbuffer[ind][1] == None:
+            if neighbor.readbuffer[ind] == None or neighbor.readbuffer[ind].origin == None:
                 ind = None
 
         return ind
@@ -203,7 +225,7 @@ class SmartNode(Node):
         # Not sure about this?
         if not all(x is None for x in self.sendbuffer):
             self.nextStatus = "SEND"
-
+"""
 class NoiseNode(Node):
     def __init__(self, pos):
         Node.__init__(self, pos, "Noise")
@@ -220,11 +242,14 @@ class NoiseNode(Node):
         for neighbor in self.neighbors:
             if neighbor.status == "REC":
                 # currently nothing there
+                neighbor.addToBuffer(Packet(noise, None, rand_channel), rand_channel)
+                """
                 if neighbor.readbuffer[rand_channel] == None:
-                    neighbor.readbuffer[rand_channel] = (noise, None)
+                    neighbor.readbuffer[rand_channel] = 
                 else:
                     curr_msg, curr_sender = neighbor.readbuffer[rand_channel]
                     neighbor.readbuffer[rand_channel] = (curr_msg + noise, curr_sender)
+                """
         print "Added noise {} at {} on channel {}".format(noise, self.pos, rand_channel)
 
     # Noise nodes don't need to receive anything, only generate noise
@@ -237,33 +262,44 @@ class HotPotatoNode(Node):
         self.team = team
 
     def send(self, msg):
-        num = len(self.neighbors)
-        for smsg in self.sendbuffer:
-            if smsg == None:
+        recneighbor = [neg for neg in self.neighbors if neg.status == "REC"]
+        num = len(recneighbor)
+        if num == 0:
+            return
+        for i, smsg in enumerate(self.sendbuffer):
+            if smsg == None or smsg.team != self.team:
                 continue
-            for neighbor in self.neighbors:
-                randNeighbor = self.neighbors[random.randint(0, num-1)]
-                if randNeighbor.status == "REC":
-                    token = (smsg, self)
-                    randNeighbor.addToReadBuffer(token, 0)
-                    print "{} at {} sending {} to {} at {}".format(self.type, self.pos, smsg, randNeighbor.type, randNeighbor.pos)
-                    break
+            randNeighbor = recneighbor[random.randint(0, num-1)]
+            token = smsg.copy()
+            print "{} at {} sending {} to {} at {}".format(self.type, self.pos, smsg, randNeighbor.type, randNeighbor.pos)
+            randNeighbor.addToReadBuffer(token, 0)
         self.nextStatus = "REC"
 
     def recieve(self):
         for i, item in enumerate(self.readbuffer):
-            if item == None or item == "INTERFERENCE":
+            if item != None and item.type == "ACK":
+                self.sendbuffer[item.channel] = None
+                print "{} at {} recieved ack for {} on channel {} from {}".format(self.type, self.pos, item.token, item.channel, item.origin.pos)
+                self.readbuffer[i] = None
+        for i, item in enumerate(self.readbuffer):
+            if item == None:
                 self.readbuffer[i] = None
                 continue
-            if item[0] == "ACK":
-                self.sendbuffer[item[2]] = None
-                print "{} at {} recieved ack for {} on channel".format(self.type, self.pos, item[1], item[2])
-            elif item[1] == None:
+            if item.type == "INTERFERENCE":
+                self.readbuffer[i] = None
+                interference[self.team] += 1
+                continue
+
+            if item.origin == None:
                 pass
             else:
-                item[1].readbuffer[i] = ("ACK", item[0], i)
-                self.sendbuffer[i] = (item[0])
-                print "{} at {} recieved {} from {} at {} on channel {}".format(self.type, self.pos, item[0], item[1].type, item[1].pos, i)
+                print "{} at {} recieved {} from {} at {} on channel {}".format(self.type, self.pos, item.token, item.origin.type, item.origin.pos, i)
+                ackchannel = (i+1) % 16
+                item.origin.readbuffer[ackchannel] = Packet(item.token, self, channel = i, type ="ACK")
+                sendmsg = item.copy()
+                sendmsg.origin = self
+                sendmsg.numhops += 1
+                self.sendbuffer[i] = sendmsg
             self.readbuffer[i] = None
         if not all(x is None for x in self.sendbuffer):
             self.nextStatus = "SEND"
