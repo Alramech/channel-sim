@@ -13,9 +13,14 @@ class GUI:
         self.w.pack()
 
         self.scores = []
+        self.sent = []
         self.packets = defaultdict(list)
         self.w.create_rectangle(0, 0, 400, 400, fill="#FFFFFF")
         self.num_scores = 0
+        self.num_sent = 0
+        self.num_teams = 0
+        self.stats = []
+        self.teams = {}
 
 
     def add_node(self, pos, color = "#000000"):
@@ -42,6 +47,34 @@ class GUI:
     def update_score(self, i, txt):
         self.w.itemconfig(self.scores[i], text=txt)
 
+    def add_sent(self):
+        x1 = 480
+        y1 = 100 + self.num_scores * 10
+        self.num_sent += 1
+        sc = self.w.create_text(x1+10, y1+10, text = "Sent:")
+        self.sent.append(sc)
+
+    def update_sent(self, i, txt):
+        self.w.itemconfig(self.sent[i], text=txt)
+
+
+
+    def add_team(self, i):
+        x = 420
+        y = 100 + self.num_teams * 10
+        self.w.create_text(x+10, y+10, text = "Team {}: ".format(i))
+
+
+        x1 = 570
+        y1 = 100 + self.num_teams * 10
+        self.num_teams += 1
+        sc = self.w.create_text(x1+10, y1+10, text = "Interference = 0")
+        self.teams[i] = ([sc])
+
+    def update_inter(self, i, txt):
+        if i in self.teams:
+            self.w.itemconfig(self.teams[i][0], text=txt)
+
 
     def update_packets(self, pos, buf, color = "green"):
         x = pos[0]*20
@@ -56,7 +89,7 @@ class GUI:
                 self.w.create_rectangle(x+5, y+10, x+10, y+15, fill="white")
             else:
                 #self.w.create_line(x+5+i, y+2, x+5+i+1, y+2, fill=color)
-                if (val[0] != "ACK"):
+                if (val.type != "ACK"):
                     self.w.create_rectangle(x+5, y+10, x+10, y+15, fill=color)
                     break
 
