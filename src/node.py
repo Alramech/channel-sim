@@ -40,6 +40,10 @@ class Node:
     def update(self):
         self.status = self.nextStatus
 
+    def update_move(self, new_pos):
+        self.status = self.nextStatus
+        self.pos = new_pos
+
     def addToReadBuffer(self, token, channel):
         if self.readbuffer[channel] == None:
             self.readbuffer[channel] = token

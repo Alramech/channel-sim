@@ -23,6 +23,7 @@ class Field:
         self.sinks = []
         self.sources = []
         self.stats = Stats()
+        self.dim = dim
 
     def addSource(self, pos, token, team = 0):
         node = SourceNode(pos, token, team=team)
@@ -114,6 +115,53 @@ class Field:
             stats[i].ratio.append(len(stats[i].numhops)/stats[i].sent)
         root.update()
 
+    def move_step(self):
+        self.checkNeighbors()
+        for node in self.nodes:
+            if node.status == "SEND":
+                node.send(None)
+        for node in self.nodes:
+            msg = node.getMessages()
+            gui.update_packets(node.pos, node.readbuffer)
+        print test.nodes
+        for node in self.nodes:
+            if node.status == "REC":
+                node.recieve()
+        print test.nodes
+        for node in self.nodes:
+            old_pos = node.pos
+            if random.random() > 0.5 and node.pos[0] - 1 >= 0:
+                new_pos0 = node.pos[0] - 1
+            elif node.pos[0] + 1 < self.dim:
+                new_pos0 = node.pos[0] + 1
+            else:
+                new_pos0 = node.pos[0]
+
+            if random.random() > 0.5 and node.pos[1] - 1 >= 0:
+                new_pos1 = node.pos[1] - 1
+            elif node.pos[1] + 1 < self.dim:
+                new_pos1 = node.pos[1] + 1
+            else:
+                new_pos1 = node.pos[1]
+
+            new_pos = (new_pos0, new_pos1)
+            node.update_move(new_pos)
+            #gui.update_node(old_pos, new_pos)
+            node.neighbors = []
+        for i, node in enumerate(self.sources):
+            gui.update_sent(i, "Sent: {}".format(node.sent))
+            stats[node.team].sent = node.sent
+        for i, node in enumerate(self.sinks):
+            gui.update_score(i, "Score: {}".format(node.score))
+            if node.updated:
+                stats[node.team].numhops.append(node.lasthops)
+                node.updated = False
+        for i in interference:
+            gui.update_inter(i, "Interference{} = {}".format(i, interference[i]))
+            stats[i].interference.append(interference[i])
+            stats[i].ratio.append(len(stats[i].numhops)/stats[i].sent)
+        root.update()
+
     def loadConfig(self, filename):
         with open(filename, 'r') as f:
             xdim, ydim = map(int, f.readline().strip().split(" "))
@@ -140,6 +188,12 @@ test = Field(10)
 def loop():
     while True:
         test.step()
+        time.sleep(.1)
+        print"--------------"
+
+def loop_move():
+    while True:
+        test.move_step()
         time.sleep(.1)
         print"--------------"
 
@@ -216,7 +270,38 @@ def teamTestClose():
     print test
     loop()
 
+def teamTestCloseMove():
+    stats[1] = Stats()
+    stats[2] = Stats()
+    stats[3] = Stats()
+    gui.add_team(1)
+    test.addSource((0,0), "test", 1)
+    test.addHPNode((1,1), 1)
+    test.addHPNode((1,2), 1)
+    test.addHPNode((1,3), 1)
+    test.addHPNode((1,4), 1)
+    test.addSink((0,5), "test", 1)
 
+
+    gui.add_team(2)
+    test.addSource((3,0), "test", 2)
+    test.addHPNode((2,1), 2)
+    test.addHPNode((2,2), 2)
+    test.addHPNode((2,3), 2)
+    test.addHPNode((2,4), 2)
+    test.addSink((3,5), "test", 2)
+
+    gui.add_team(3)
+    test.addSource((5,0), "test", 3)
+    test.addHPNode((5,1), 3)
+    test.addHPNode((5,2), 3)
+    test.addHPNode((5,3), 3)
+    test.addHPNode((5,4), 3)
+    test.addSink((5,5), "test", 3)
+
+
+    print test
+    loop_move()
 
 
 def smartteamTest():
@@ -242,14 +327,17 @@ def plot():
     for x in stats:
         plt.figure()
         plt.plot(stats[x].numhops)
+        print(stats[x].numhops)
         plt.title("number of hops per packet at sink")
         plt.savefig("hops{}.png".format(x))
         plt.figure()
         plt.plot(stats[x].interference)
+        print(stats[x].interference)
         plt.title("total amount of interference at each timestep")
         plt.savefig("interf{}.png".format(x))
         plt.figure()
         plt.plot(stats[x].ratio)
+        print(stats[x].ratio)
         plt.title("throughput vs time")
         plt.savefig("ratio{}.png".format(x))
 
@@ -260,7 +348,8 @@ root.update()
 try:
     #defaultTest()
     #teamTest()
-    teamTestClose()
+    #teamTestClose()
     #smartteamTest()
+    teamTestCloseMove()
 finally:
     plot()
