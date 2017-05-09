@@ -29,6 +29,7 @@ class Node:
         self.ackbufffer = [None] * 16
         self.nextStatus = "REC"
         self.team = 0
+        self.distance = -1
 
     def send(self, msg):
         pass
@@ -91,21 +92,26 @@ class SinkNode(Node):
         self.status = "REC"
         self.score = 0
         self.team = team
+        self.lasthops = 0
+        self.updated = False
 
     def recieve(self):
         for i, item in enumerate(self.readbuffer):
             if item != None and item.token == self.token and item.team == self.team:
+                self.updated = True
                 item.numhops += 1
                 item.origin.readbuffer[(i+1)%16] = Packet(self.token, self, i, type = "ACK")
                 self.score += 1
+                self.lasthops = item.numhops
                 print "Delivered {} to sink, score = {}".format(self.token, self.score)
             self.readbuffer[i] = None
-"""
+
 class SmartNode(Node):
     def __init__(self, pos, team = 1):
         Node.__init__(self, pos, "Smart")
         num = random.random()
         self.team = team
+        self.traffic = [0]*16
         if num < 0.4:
             self.status = "SEND"
 
@@ -129,12 +135,12 @@ class SmartNode(Node):
         smallest_num = float('inf')
         smallest_num_index = -1
         for ind in range(16):
-            channel_traffic = 0
+            channel_traffic = self.traffic[ind]
             for neighbor in self.neighbors:
                 if neighbor.status == "REC":
                     buffer_cont = neighbor.readbuffer[ind]
                     if buffer_cont != None:
-                        if buffer_cont[1] != None:
+                        if buffer_cont.origin != None:
                             channel_traffic += 1
                         else:
                             # if there's noise only, just increment by 0.5
@@ -146,14 +152,34 @@ class SmartNode(Node):
             if channel_traffic < smallest_num:
                 smallest_num = channel_traffic
                 smallest_num_index = ind
-
+            self.traffic[ind] = channel_traffic
         return smallest_num_index
 
+    def pick_neighbor(self):
+        recneighbor = [neg for neg in self.neighbors if neg.status == "REC"]
+        num = len(recneighbor)
+        randNeighbor = recneighbor[random.randint(0, num-1)]
+        randDist = randNeighbor.distance
+        if randDist == -1:
+            randDist = 100
+        for neighbor in recneighbor:
+            if neighbor.type == "SINK":
+                self.distance = 1
+                return neighbor
+            if neighbor.distance != -1:
+                self.distance = min(self.distance, neighbor.distance + 1)
+                if neighbor.distance < randDist:
+                    randNeighbor = neighbor
+                    randDist = neighbor.distance
+
+        return randNeighbor
 
     def send(self, msg = None):
         # first determine which channel is least traffic congested
+        print "aaa"
         channel = self.channel_to_send()
-
+        print self.traffic
+        print channel
         for i, v in enumerate(self.sendbuffer):
             if v != None:
                 self.sendbuffer[i] = None
@@ -163,8 +189,11 @@ class SmartNode(Node):
             return
             msg = sendbuffer[0]
 
+        tosend = self.pick_neighbor()
+        tosend.addToReadBuffer(msg, channel)
+
+        """
         # now set send buffer to the desired msg
-        self.sendbuffer[channel] = msg
         for neighbor in self.neighbors:
             if neighbor.status == "REC":
                 if neighbor.readbuffer[channel] != None:
@@ -182,8 +211,9 @@ class SmartNode(Node):
                     # no noise or other nodes trying to communicate
                     neighbor.readbuffer[channel] = (msg, self)
                     print "{} at {} sending {} to {} at {} on channel {}".format(self.type, self.pos, msg, neighbor.type, neighbor.pos, channel)
-        # Not sure about this?
-        self.nextStatus = "REC"
+        """
+        if all(x is None for x in self.sendbuffer):
+            self.nextStatus = "REC"
 
     # in this case, dst is neighbor
     def send_neighbor(self, msg, dst):
@@ -206,43 +236,49 @@ class SmartNode(Node):
     def recieve(self):
         # listen to all channels
         for i, item in enumerate(self.readbuffer):
+            if item != None and item.type == "ACK":
+                self.sendbuffer[item.channel] = None
+                print "{} at {} recieved ack for {} on channel {} from {}".format(self.type, self.pos, item.token, item.channel, item.origin.pos)
+                self.readbuffer[i] = None
+        for i, item in enumerate(self.readbuffer):
             if item == None:
+                self.readbuffer[i] = None
                 continue
-
-            if item == "INTERFERENCE":
+            if item.type == "INTERFERENCE":
+                self.readbuffer[i] = None
+                interference[self.team] += 1
                 continue
-            print item
-            if item[0] == "ACK" or item[0] == "Hi":
-                continue
-            if item[1]:
-                print "{} at {} recieved {} from {} at {} on channel {}".format(self.type, self.pos, item[0], item[1].type, item[1].pos, i)
-                item[1].sendbuffer[i] = item[0]
+            if item.type == "MSG":
+                print "{} at {} recieved {} from {} at {} on channel {}".format(self.type, self.pos, item.token, item.origin.type, item.origin.pos, i)
+                self.sendbuffer[i] = item.copy()
+                self.sendbuffer[i].origin = self
+                self.sendbuffer[i].numhops += 1
             else:
-                print "{} at {} recieved {} on channel {}".format(self.type, self.pos, item[0], i)
+                print "{} at {} recieved {} on channel {}".format(self.type, self.pos, item.token, i)
 
             self.readbuffer[i] = None
 
         # Not sure about this?
         if not all(x is None for x in self.sendbuffer):
             self.nextStatus = "SEND"
-"""
+
 class NoiseNode(Node):
     def __init__(self, pos):
         Node.__init__(self, pos, "Noise")
         self.status = "SEND"
+        self.nextStatus = "SEND"
         self.team = -1
 
     def send(self, msg):
         # generate gaussian noise (alphanumeric string) and add at end
         chars = string.ascii_uppercase + string.ascii_lowercase + string.digits
         noise = ''.join(random.choice(chars) for i in range(32))
-
         # choose a random channel to send on
-        rand_channel = random.randint(0, 16)
+        rand_channel = random.randint(0, 4)
         for neighbor in self.neighbors:
             if neighbor.status == "REC":
                 # currently nothing there
-                neighbor.addToBuffer(Packet(noise, None, rand_channel), rand_channel)
+                neighbor.addToReadBuffer(Packet(noise, self, rand_channel, type = "NOISE"), rand_channel)
                 """
                 if neighbor.readbuffer[rand_channel] == None:
                     neighbor.readbuffer[rand_channel] = 
